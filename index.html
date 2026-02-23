@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAX ARBITRAGE SIMULATOR</title>
+    <style>
+        :root { --gold: #c5a059; --dark: #0f0f0f; --gray: #2a2a2a; --error: #ff6b6b; }
+        body { font-family: "Helvetica Neue", Arial, sans-serif; background-color: var(--dark); color: #fff; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .card { width: 90%; max-width: 450px; background: var(--gray); padding: 2.5rem; border-radius: 12px; border: 1px solid #333; }
+        .view { display: none; animation: fadeIn 0.4s ease-out forwards; }
+        .active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        h2 { color: var(--gold); text-align: center; letter-spacing: 2px; font-size: 1.3rem; margin-bottom: 1.5rem; }
+        label { font-size: 0.8rem; color: #888; display: block; margin-bottom: 0.3rem; }
+        input { width: 100%; padding: 1rem; margin-bottom: 1.2rem; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; box-sizing: border-box; font-size: 1.1rem; }
+        button { width: 100%; padding: 1.2rem; background: var(--gold); border: none; color: #000; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.3s; font-size: 1rem; }
+        button:hover { background: #d4b475; }
+        
+        .result-box { border: 1px solid var(--gold); padding: 2rem; border-radius: 8px; margin: 1.5rem 0; text-align: center; }
+        .profit-label { font-size: 0.9rem; color: #ccc; margin-bottom: 1rem; }
+        .profit-main { font-size: 2.8rem; color: var(--gold); font-weight: bold; }
+
+        .desc { font-size: 0.85rem; color: #aaa; text-align: center; line-height: 1.6; margin-bottom: 2rem; }
+        .error-msg { color: var(--error); text-align: center; font-size: 0.8rem; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div id="view-input" class="view active">
+        <h2>TAX STRATEGY</h2>
+        <p class="desc">昨年度の年収に基づき、<br>最適化された後の税額差を算出します。</p>
+        <label>昨年度の年収（万円）</label>
+        <input type="number" id="incomeManYen" placeholder="例: 2000">
+        <button onclick="toResult()">分析結果を表示する</button>
+        <div id="err-msg" class="error-msg">※本スキームは年収1,300万円〜の高所得者の方が対象です。</div>
+    </div>
+
+    <div id="view-result" class="view">
+        <h2>ANALYSIS RESULT</h2>
+        <div class="result-box">
+            <div class="profit-label">売却時を含めた<br>最終的な実質手残り（概算）</div>
+            <div id="display-net" class="profit-main">0</div>
+        </div>
+        <p class="desc">
+            ※本スキームを適用した場合の税額差のシミュレーションです。
+        </p>
+        <button onclick="toContact()">具体的な相談をする</button>
+        <p style="text-align:center; margin-top: 1.5rem;">
+            <a href="#" onclick="reset()" style="color:#666; font-size:0.7rem;">再入力</a>
+        </p>
+    </div>
+
+    <div id="view-contact" class="view">
+        <h2>CONSULTATION</h2>
+        <p class="desc">詳細なシミュレーションについて相談する。</p>
+        
+        <label>お名前</label>
+        <input type="text" id="userName" placeholder="例：田中 太郎">
+
+        <label>ご連絡先</label>
+        <input type="text" id="userContact" placeholder="メールアドレス または 電話番号">
+
+        <label>自己資金（概算・万円）</label>
+        <input type="number" id="cashManYen" placeholder="例: 1000">
+
+        <button onclick="submitLead()">相談する</button>
+    </div>
+
+    <div id="view-thanks" class="view">
+        <h2>REQUEST RECEIVED</h2>
+        <p class="desc" style="font-size: 1rem; margin-top: 2rem;">
+            ありがとうございます。<br><br>
+            専門コンサルタントが内容を確認し、<br>
+            折り返しご連絡させていただきます。
+        </p>
+        <button onclick="reset()">トップへ戻る</button>
+    </div>
+</div>
+
+<script>
+    let globalData = {};
+
+    function calcTax(ti) {
+        if (ti <= 0) return 0;
+        let it = 0;
+        if (ti <= 1949000) it = ti * 0.05;
+        else if (ti <= 3299000) it = ti * 0.10 - 97500;
+        else if (ti <= 6949000) it = ti * 0.20 - 427500;
+        else if (ti <= 8999000) it = ti * 0.23 - 636000;
+        else if (ti <= 17999000) it = ti * 0.33 - 1536000;
+        else if (ti <= 39999000) it = ti * 0.40 - 2796000;
+        else it = ti * 0.45 - 4796000;
+        return it + (ti * 0.10);
+    }
+
+    function toResult() {
+        const inc = parseInt(document.getElementById('incomeManYen').value);
+        if (!inc) return alert("数値を入力してください");
+
+        const estTaxable = (inc * 10000) - 3950000;
+        if (estTaxable < 9000000) {
+            document.getElementById('err-msg').style.display = 'block';
+            return;
+        }
+        document.getElementById('err-msg').style.display = 'none';
+
+        // --- ロジック：実質メリット（純利益）のみを算出 ---
+        const baseTax = calcTax(estTaxable);
+        const targetLoss = estTaxable - 3300000; // 330万フロア
+        const requiredDep = targetLoss + 4000000; // 想定収益400万
+        const bldPrice = requiredDep * 4;
+        
+        const savingTotal = (baseTax - calcTax(3300000)) * 4; // 4年間の節税
+        const taxInc5 = calcTax(estTaxable + 4000000) - baseTax; // 5年目の税増
+        const exitTax = bldPrice * 0.20315; // 出口税金
+        
+        let netImpact = savingTotal - taxInc5 - exitTax;
+
+        // 370万円以上なら400万円に繰り上げ（ユーザー要望）
+        if (netImpact >= 3700000) {
+            netImpact = Math.ceil(netImpact / 1000000) * 1000000;
+        } else {
+            // それ以外も10万円単位で丸める（細かすぎない表示）
+            netImpact = Math.round(netImpact / 100000) * 100000;
+        }
+
+        document.getElementById('display-net').innerText = "約¥" + (netImpact / 10000).toLocaleString() + "万円";
+
+        globalData = {
+            "年収": inc + "万円",
+            "算出純益": netImpact.toLocaleString() + "円",
+            "建物想定額": Math.floor(bldPrice / 10000) + "万円"
+        };
+        switchView('view-result');
+    }
+
+    function switchView(id) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+    function toContact() { switchView('view-contact'); }
+    function reset() { switchView('view-input'); }
+
+    function submitLead() {
+        const name = document.getElementById('userName').value;
+        const contact = document.getElementById('userContact').value;
+        const cash = document.getElementById('cashManYen').value;
+        if (!name || !contact || !cash) return alert("すべての項目を入力してください");
+
+        console.table({
+            "氏名": name,
+            "連絡先": contact,
+            "自己資金": cash + "万円",
+            ...globalData,
+            "計算根拠": "330万フロア維持/出口税引後"
+        });
+        switchView('view-thanks');
+    }
+</script>
+</body>
+</html>
